@@ -387,99 +387,11 @@ config({ quiet: true, ... })
 
 ---
 
-## Comparison: Manual vs Dotenvx
+## Configuration Options
 
-### Manual Implementation (Basic)
+### Override Existing Variables
 
-```js
-import { readFileSync } from "fs"
-import { join } from "path"
-
-export const LoadDotEnv = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const envPath = join(input.cwd ?? directory, ".env")
-      try {
-        const contents = readFileSync(envPath, "utf8")
-        for (const line of contents.split("\n")) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith("#")) continue
-          const eq = trimmed.indexOf("=")
-          if (eq === -1) continue
-          const key = trimmed.slice(0, eq).trim()
-          let val = trimmed.slice(eq + 1).trim()
-          if ((val.startsWith('"') && val.endsWith('"')) ||
-              (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.slice(1, -1)
-          }
-          output.env[key] = val
-        }
-      } catch {
-        // No .env file found — that's fine
-      }
-    },
-  }
-}
-```
-
-**Limitations:**
-- ❌ No multi-environment support (no `.env.development`, etc.)
-- ❌ No encryption support
-- ❌ Manual parsing (edge cases, escaping, multiline values)
-- ❌ No variable expansion or command substitution
-- ❌ Single file only
-
-### Dotenvx Implementation (Recommended)
-
-```js
-import { config } from "@dotenvx/dotenvx"
-
-export const LoadDotEnv = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const processEnv = {}
-      const nodeEnv = process.env.NODE_ENV || "development"
-      
-      const result = config({
-        path: input.cwd ?? directory,
-        convention: "flow",
-        processEnv,
-        quiet: true,
-        ignore: ["MISSING_ENV_FILE"],
-      })
-      
-      if (result.parsed) {
-        for (const [key, value] of Object.entries(result.parsed)) {
-          if (!(key in output.env)) {
-            output.env[key] = value
-          }
-        }
-      }
-      
-      if (!("NODE_ENV" in output.env)) {
-        output.env.NODE_ENV = nodeEnv
-      }
-    },
-  }
-}
-```
-
-**Advantages:**
-- ✅ Multi-environment support (dotenv-flow convention)
-- ✅ Encryption support (safe to commit encrypted values)
-- ✅ Robust parsing (handles all edge cases)
-- ✅ Variable expansion and command substitution
-- ✅ Multiple file loading with precedence
-- ✅ Maintained by dotenv creator
-- ✅ Cross-platform compatibility
-
----
-
-## Alternative Implementations
-
-### Option 1: With Overload (Last Wins)
-
-If you want `.env` values to override existing environment variables:
+To let `.env` values override existing environment variables:
 
 ```js
 const result = config({
@@ -491,35 +403,26 @@ const result = config({
 })
 ```
 
-### Option 2: Custom File Pattern
+### Custom Directory
 
-Load from a custom directory structure:
+Load from a custom directory:
 
 ```js
 const result = config({
-  path: join(basePath, "config", ".env"),
+  path: join(basePath, "config"),
   convention: "flow",
   processEnv,
   quiet: true,
 })
 ```
 
-### Option 3: Custom NODE_ENV
+### Environment Override
 
-If you want to force a specific environment regardless of `NODE_ENV`:
+Set environment before running OpenCode:
 
-```js
-const result = config({
-  path: basePath,
-  convention: "flow",
-  processEnv,
-  // This is handled by dotenv-flow internally
-  // via process.env.NODE_ENV or DOTENV_ENV
-  quiet: true,
-})
+```bash
+NODE_ENV=production opencode
 ```
-
-To override the environment, set `NODE_ENV` in your shell before running OpenCode, or set it in your system environment variables.
 
 ---
 
@@ -821,20 +724,6 @@ OpenCode has a built-in `.env` loader, but it only loads environment variables f
 **It does NOT make these variables available inside the shells it spawns.** This plugin bridges that gap.
 
 ---
-
-## Testing the Plugin
-
-### 1. Install Dependencies
-
-Create `.opencode/package.json`:
-
-```json
-{
-  "dependencies": {
-    "@dotenvx/dotenvx": "^1.48.0"
-  }
-}
-```
 
 ### 2. Create the Plugin
 
