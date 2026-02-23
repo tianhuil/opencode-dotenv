@@ -25,13 +25,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.keys
 .env.*.keys
 
-# Local environment overrides (machine-specific)
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-.env.*.local
-
 # caches
 .eslintcache
 .cache
