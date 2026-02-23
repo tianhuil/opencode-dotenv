@@ -10,7 +10,23 @@
 
 - OpenCode has a built-in plugin system with a `shell.env` hook specifically designed for injecting environment variables into shells
 - The plugin automatically loads before every shell execution (both AI-triggered bash commands and interactive terminals)
-- Implementation is straightforward - just a few lines of JavaScript/TypeScript
+- **Uses [dotenvx](https://dotenvx.com/) for robust `.env` file parsing with encryption support**
+- **Follows the [dotenv-flow convention](https://dotenvx.com/docs/advanced/config-convention#flow-convention) for multi-environment support**
+
+---
+
+## Why Dotenvx?
+
+[Dotenvx](https://dotenvx.com/) is the next-generation dotenv from the creator of the original `dotenv` package. Key benefits:
+
+| Feature | Description |
+|---------|-------------|
+| **Encrypted envs** | Encrypt secrets in `.env` files - safe to commit to git |
+| **Multi-environment** | Built-in support for `.env.development`, `.env.production`, etc. |
+| **Flow convention** | Follows dotenv-flow file loading order |
+| **Cross-platform** | Works in Node.js, Bun, Python, Go, Ruby, PHP, and more |
+| **Variable expansion** | Reference other variables: `DATABASE_URL=postgres://${USER}@localhost` |
+| **Command substitution** | Use shell commands: `HOSTNAME=$(hostname)` |
 
 ---
 
@@ -88,7 +104,21 @@ export const InjectEnvPlugin = async () => {
 
 ---
 
-## Implementation: Load DotEnv Plugin
+## Implementation: Dotenvx Plugin (Recommended)
+
+### Prerequisites
+
+Create `.opencode/package.json` to install dotenvx:
+
+```json
+{
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.48.0"
+  }
+}
+```
+
+OpenCode runs `bun install` at startup automatically.
 
 ### File Location
 
@@ -97,6 +127,269 @@ export const InjectEnvPlugin = async () => {
 ```
 
 ### Complete Implementation
+
+```js
+import { config } from "@dotenvx/dotenvx"
+import { join } from "path"
+
+export const LoadDotEnv = async ({ directory }) => {
+  return {
+    "shell.env": async (input, output) => {
+      const basePath = input.cwd ?? directory
+      
+      // Use a custom processEnv object to capture parsed values
+      const processEnv = {}
+      
+      // Default NODE_ENV to 'development' if not set
+      const nodeEnv = process.env.NODE_ENV || "development"
+      
+      // Load env files using dotenv-flow convention
+      const result = config({
+        path: basePath,
+        convention: "flow",
+        processEnv,
+        quiet: true,        // Suppress console output
+        ignore: ["MISSING_ENV_FILE"],  // Don't error if files missing
+      })
+      
+      // Merge parsed values into output.env (don't override existing)
+      if (result.parsed) {
+        for (const [key, value] of Object.entries(result.parsed)) {
+          if (!(key in output.env)) {
+            output.env[key] = value
+          }
+        }
+      }
+      
+      // Also set NODE_ENV in the shell if it wasn't already set
+      if (!("NODE_ENV" in output.env)) {
+        output.env.NODE_ENV = nodeEnv
+      }
+    },
+  }
+}
+```
+
+### TypeScript Version
+
+```ts
+import { config, type DotenvConfigOutput, type DotenvPopulateInput } from "@dotenvx/dotenvx"
+import { join } from "path"
+import type { Plugin } from "@opencode-ai/plugin"
+
+export const LoadDotEnv: Plugin = async ({ directory }) => {
+  return {
+    "shell.env": async (input, output) => {
+      const basePath = input.cwd ?? directory
+      
+      // Use a custom processEnv object to capture parsed values
+      const processEnv: DotenvPopulateInput = {}
+      
+      // Default NODE_ENV to 'development' if not set
+      const nodeEnv = process.env.NODE_ENV || "development"
+      
+      // Load env files using dotenv-flow convention
+      const result = config({
+        path: basePath,
+        convention: "flow",
+        processEnv,
+        quiet: true,
+        ignore: ["MISSING_ENV_FILE"],
+      })
+      
+      // Merge parsed values into output.env (don't override existing)
+      if (result.parsed) {
+        for (const [key, value] of Object.entries(result.parsed)) {
+          if (!(key in output.env)) {
+            output.env[key] = value
+          }
+        }
+      }
+      
+      // Also set NODE_ENV in the shell if it wasn't already set
+      if (!("NODE_ENV" in output.env)) {
+        output.env.NODE_ENV = nodeEnv
+      }
+    },
+  }
+}
+```
+
+---
+
+## Dotenvx Flow Convention
+
+### File Loading Order
+
+When using `convention: "flow"`, dotenvx loads files in this order (first wins):
+
+| Priority | File | Description |
+|----------|------|-------------|
+| 1 (highest) | `.env.{NODE_ENV}.local` | Environment-specific local overrides |
+| 2 | `.env.{NODE_ENV}` | Environment-specific defaults |
+| 3 | `.env.local` | Local overrides (all environments) |
+| 4 (lowest) | `.env` | Global defaults |
+
+### Example: NODE_ENV=development
+
+```sh
+$ echo "HELLO=development local" > .env.development.local
+$ echo "HELLO=development" > .env.development
+$ echo "HELLO=local" > .env.local
+$ echo "HELLO=env" > .env
+$ echo "console.log('Hello ' + process.env.HELLO)" > index.js
+
+$ NODE_ENV=development dotenvx run --convention=flow -- node index.js
+[dotenvx@1.X.X] injecting env (1) from .env.development.local, .env.development, .env.local, .env
+Hello development local
+```
+
+### Default Environment
+
+The plugin defaults `NODE_ENV` to `development` if not set. This means:
+
+- If `NODE_ENV` is not set in the environment → uses `development`
+- Loads `.env.development.local`, `.env.development`, `.env.local`, `.env`
+- Sets `NODE_ENV=development` in the shell
+
+---
+
+## Encryption Support
+
+### How It Works
+
+Dotenvx uses **Elliptic Curve Integrated Encryption Scheme (ECIES)** (same as Bitcoin) for encryption:
+
+1. **Public key** (`DOTENV_PUBLIC_KEY`) - Used to encrypt secrets, stored in `.env` file
+2. **Private key** (`DOTENV_PRIVATE_KEY`) - Used to decrypt, stored in `.env.keys` file
+
+### Encrypted .env File Example
+
+```env
+#/-------------------[DOTENV_PUBLIC_KEY]--------------------/
+#/ public-key encryption for .env files /
+DOTENV_PUBLIC_KEY="03f8b376234c4f2f0445f392a12e80f3a84b4b0d1e0c3df85c494e45812653c22a"
+
+# Database configuration
+DB_HOST="encrypted:BNr24F4vW9CQ37LOXeRgOL6QlwtJfAoAVXtSdSfpicPDHtqo/Q2HekeCjAWrhxHy+VHAB3QTg4fk9VdIoncLIlu1NssFO6XQXN5"
+DB_NAME="encrypted:BGtVHZBbvHmX6J+J+xm+73SnUFpqd2AWOL6/mHe1SCqPgMAXqk8dbLgqmHiZSbw4D6VquaYtF9safGyucClAvGGMzgD7gdnXGB1YGGaPN7nTpJ4vE1nx8hi1bNtNCr5gEm7z+pdLq1IsH4vPSH4O7XBx"
+
+# API Keys
+API_KEY="encrypted:BD9paBaun2284WcqdFQZUlDKapPiuE/ruoLY7rINtQPXKWcfqI08vFAlCCmwBoJIvd2Nv3ACiSCA672wsKeJlFJTcRB6IRRJ+fPBuz2kvYlOiec7EzHTT8EVzSDydFun5R5ODfmN"
+```
+
+### .env.keys File
+
+```env
+DOTENV_PRIVATE_KEY="81dac4d2c42e67a2c6542d3b943a4674a05c4be5e7e5a40a689be7a3bd49a07e"
+DOTENV_PRIVATE_KEY_PRODUCTION="4a650a4159790e2341a388ebcd7526036fd33cc6240667c7cd940cde7b11cfaf"
+```
+
+### Decryption in the Plugin
+
+The plugin automatically decrypts encrypted values if:
+
+1. **`.env.keys` file exists** in the project directory, OR
+2. **`DOTENV_PRIVATE_KEY` environment variable** is set
+
+```js
+// The config() call handles decryption automatically
+const result = config({
+  path: basePath,
+  convention: "flow",
+  processEnv,
+  quiet: true,
+})
+```
+
+### Encrypting Your .env Files
+
+```bash
+# Install dotenvx CLI
+npm install -g @dotenvx/dotenvx
+
+# Encrypt an existing .env file
+dotenvx encrypt
+
+# Set an encrypted value
+dotenvx set API_KEY "secret-value"
+```
+
+### Security Best Practices
+
+1. **Add `.env.keys` to `.gitignore`** - Never commit private keys
+2. **Commit encrypted `.env` files** - Safe to share in version control
+3. **Use environment-specific keys** - `DOTENV_PRIVATE_KEY_PRODUCTION` for production
+4. **Set private keys in CI/CD** - Use GitHub Actions secrets or similar
+
+---
+
+## Dotenvx Config Options
+
+The `config()` function accepts these options:
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `path` | `string \| string[]` | `process.cwd()` | Directory or file path(s) to load |
+| `convention` | `"flow" \| "nextjs"` | - | File loading convention |
+| `processEnv` | `object` | `process.env` | Object to populate with values |
+| `overload` | `boolean` | `false` | Override existing env vars |
+| `strict` | `boolean` | `false` | Throw on errors |
+| `quiet` | `boolean` | `false` | Suppress console output |
+| `ignore` | `string[]` | `[]` | Error types to ignore |
+| `envKeysFile` | `string` | `.env.keys` | Path to private keys file |
+| `debug` | `boolean` | `false` | Enable debug logging |
+
+---
+
+## Key Design Decisions
+
+### 1. Using `processEnv` Object
+
+```js
+const processEnv = {}
+const result = config({ processEnv, ... })
+```
+
+- **Why:** We don't want to pollute `process.env` of the OpenCode process itself
+- **Benefit:** Clean separation - values only go to spawned shells
+
+### 2. Default NODE_ENV to Development
+
+```js
+const nodeEnv = process.env.NODE_ENV || "development"
+```
+
+- **Why:** Matches typical development workflow
+- **Benefit:** Developers don't need to set NODE_ENV manually
+
+### 3. Non-Overriding Merge
+
+```js
+if (!(key in output.env)) {
+  output.env[key] = value
+}
+```
+
+- **Why:** Existing shell env vars should take precedence
+- **Benefit:** Allows overriding via shell or OpenCode settings
+
+### 4. Quiet Mode
+
+```js
+config({ quiet: true, ... })
+```
+
+- **Why:** Don't spam console with loading messages on every shell execution
+- **Benefit:** Cleaner output
+
+---
+
+---
+
+## Comparison: Manual vs Dotenvx
+
+### Manual Implementation (Basic)
 
 ```js
 import { readFileSync } from "fs"
@@ -115,7 +408,6 @@ export const LoadDotEnv = async ({ directory }) => {
           if (eq === -1) continue
           const key = trimmed.slice(0, eq).trim()
           let val = trimmed.slice(eq + 1).trim()
-          // Strip surrounding quotes
           if ((val.startsWith('"') && val.endsWith('"')) ||
               (val.startsWith("'") && val.endsWith("'"))) {
             val = val.slice(1, -1)
@@ -130,88 +422,393 @@ export const LoadDotEnv = async ({ directory }) => {
 }
 ```
 
-### TypeScript Version
+**Limitations:**
+- ❌ No multi-environment support (no `.env.development`, etc.)
+- ❌ No encryption support
+- ❌ Manual parsing (edge cases, escaping, multiline values)
+- ❌ No variable expansion or command substitution
+- ❌ Single file only
 
-```ts
-import { readFileSync } from "fs"
-import { join } from "path"
-import type { Plugin } from "@opencode-ai/plugin"
+### Dotenvx Implementation (Recommended)
 
-export const LoadDotEnv: Plugin = async ({ directory }) => {
+```js
+import { config } from "@dotenvx/dotenvx"
+
+export const LoadDotEnv = async ({ directory }) => {
   return {
     "shell.env": async (input, output) => {
-      const envPath = join(input.cwd ?? directory, ".env")
-      try {
-        const contents = readFileSync(envPath, "utf8")
-        for (const line of contents.split("\n")) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith("#")) continue
-          const eq = trimmed.indexOf("=")
-          if (eq === -1) continue
-          const key = trimmed.slice(0, eq).trim()
-          let val = trimmed.slice(eq + 1).trim()
-          // Strip surrounding quotes
-          if ((val.startsWith('"') && val.endsWith('"')) ||
-              (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.slice(1, -1)
+      const processEnv = {}
+      const nodeEnv = process.env.NODE_ENV || "development"
+      
+      const result = config({
+        path: input.cwd ?? directory,
+        convention: "flow",
+        processEnv,
+        quiet: true,
+        ignore: ["MISSING_ENV_FILE"],
+      })
+      
+      if (result.parsed) {
+        for (const [key, value] of Object.entries(result.parsed)) {
+          if (!(key in output.env)) {
+            output.env[key] = value
           }
-          output.env[key] = val
         }
-      } catch {
-        // No .env file found — that's fine
+      }
+      
+      if (!("NODE_ENV" in output.env)) {
+        output.env.NODE_ENV = nodeEnv
       }
     },
   }
 }
+```
+
+**Advantages:**
+- ✅ Multi-environment support (dotenv-flow convention)
+- ✅ Encryption support (safe to commit encrypted values)
+- ✅ Robust parsing (handles all edge cases)
+- ✅ Variable expansion and command substitution
+- ✅ Multiple file loading with precedence
+- ✅ Maintained by dotenv creator
+- ✅ Cross-platform compatibility
+
+---
+
+## Alternative Implementations
+
+### Option 1: With Overload (Last Wins)
+
+If you want `.env` values to override existing environment variables:
+
+```js
+const result = config({
+  path: basePath,
+  convention: "flow",
+  processEnv,
+  overload: true,  // .env values override existing
+  quiet: true,
+})
+```
+
+### Option 2: Custom File Pattern
+
+Load from a custom directory structure:
+
+```js
+const result = config({
+  path: join(basePath, "config", ".env"),
+  convention: "flow",
+  processEnv,
+  quiet: true,
+})
+```
+
+### Option 3: Custom NODE_ENV
+
+If you want to force a specific environment regardless of `NODE_ENV`:
+
+```js
+const result = config({
+  path: basePath,
+  convention: "flow",
+  processEnv,
+  // This is handled by dotenv-flow internally
+  // via process.env.NODE_ENV or DOTENV_ENV
+  quiet: true,
+})
+```
+
+To override the environment, set `NODE_ENV` in your shell before running OpenCode, or set it in your system environment variables.
+
+---
+
+## .gitignore Configuration
+
+Add these patterns to your `.gitignore` to keep sensitive data out of version control:
+
+```gitignore
+# Environment keys (private decryption keys)
+.env.keys
+
+# Local environment overrides (machine-specific)
+.env.local
+.env.*.local
+
+# Optional: Keep development defaults local
+.env.development.local
+.env.test.local
+```
+
+### What to Commit
+
+You **should commit** these files (they contain non-sensitive defaults or encrypted values):
+
+```gitignore
+# ✅ Commit these:
+.env                    # Default values (non-sensitive)
+.env.development        # Development defaults (non-sensitive)
+.env.production         # Production defaults (non-sensitive)
+.env.test               # Test defaults (non-sensitive)
+.env.staging            # Staging defaults (non-sensitive)
+
+# ❌ Don't commit these:
+.env.keys              # Private decryption keys
+.env.local              # Local machine overrides
+.env.*.local           # Environment-specific local overrides
 ```
 
 ---
 
-## Key Design Decisions
+## Environment File Examples
 
-### 1. Path Resolution
+### .env (Global Defaults)
 
-```js
-const envPath = join(input.cwd ?? directory, ".env")
+```env
+# These are safe to commit if they don't contain secrets
+APP_NAME=MyApp
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+LOG_LEVEL=info
 ```
 
-- Uses `input.cwd` if available (current working directory of the shell)
-- Falls back to `directory` from plugin context
-- This ensures the correct `.env` file is loaded based on where the shell is running
+### .env.development (Development)
 
-### 2. Error Handling
+```env
+# Development-specific defaults (safe to commit)
+DEBUG=true
+LOG_LEVEL=debug
+DATABASE_HOST=localhost
+API_URL=http://localhost:3000
+```
+
+### .env.production (Production)
+
+```env
+# Production defaults (safe to commit)
+LOG_LEVEL=warn
+API_URL=https://api.example.com
+
+# Use encrypted values for secrets
+#/-------------------[DOTENV_PUBLIC_KEY]--------------------/
+DOTENV_PUBLIC_KEY_PRODUCTION="03f8b376234c4f2f0445f392a12e80f3a84b4b0d1e0c3df85c494e45812653c22a"
+DATABASE_PASSWORD="encrypted:BNr24F4vW9CQ37LOXeRgOL6QlwtJfAoAVXtSdSfpicPDHtqo/Q2HekeCjAWrhxHy+VHAB3QTg4fk9VdIoncLIlu1NssFO6XQXN5"
+API_KEY="encrypted:BD9paBaun2284WcqdFQZUlDKapPiuE/ruoLY7rINtQPXKWcfqI08vFAlCCmwBoJIvd2Nv3ACiSCA672wsKeJlFJTcRB6IRRJ+fPBuz2kvYlOiec7EzHTT8EVzSDydFun5R5ODfmN"
+```
+
+### .env.local (Local Overrides - Gitignored)
+
+```env
+# Local machine-specific settings (don't commit!)
+DATABASE_PASSWORD=my-local-password
+MY_DEV_KEY=some-secret-key
+```
+
+### .env.development.local (Local Dev Overrides - Gitignored)
+
+```env
+# Override development settings locally
+DEBUG=true
+VERBOSE_LOGGING=true
+```
+
+---
+
+## Troubleshooting
+
+### Issue: Environment variables not loading
+
+**Symptoms:** `echo $MY_VAR` returns empty
+
+**Solutions:**
+1. Check that `.env` files exist in the project root
+2. Verify plugin file is in `.opencode/plugins/` directory
+3. Check that `@dotenvx/dotenvx` is installed (run `bun install` in `.opencode/`)
+4. Enable debug mode to see what's happening:
 
 ```js
-try {
-  // ...
-} catch {
-  // No .env file found — that's fine
+const result = config({
+  path: basePath,
+  convention: "flow",
+  processEnv,
+  debug: true,  // Enable debug logging
+  ignore: ["MISSING_ENV_FILE"],
+})
+```
+
+### Issue: Wrong environment loaded
+
+**Symptoms:** Development variables used instead of production
+
+**Solutions:**
+1. Check `NODE_ENV` is set correctly: `echo $NODE_ENV`
+2. Verify file names match environment: `.env.production` not `.env.prod`
+3. Ensure `.env.keys` has the correct private key for the environment
+
+### Issue: Encrypted values not decrypting
+
+**Symptoms:** Variables show as `encrypted:...` strings
+
+**Solutions:**
+1. Ensure `.env.keys` file exists in project root
+2. Verify `DOTENV_PRIVATE_KEY` or `DOTENV_PRIVATE_KEY_{ENVIRONMENT}` is set
+3. Check that the public key in the `.env` file matches the private key in `.env.keys`
+
+### Issue: Plugin slows down shell execution
+
+**Symptoms:** Shells take a second or two to start
+
+**Solutions:**
+1. This is expected - file I/O occurs on every shell execution
+2. Consider using `quiet: true` to reduce console output (already set)
+3. For frequently accessed vars, set them in your system environment instead
+
+---
+
+## Quick Reference Card
+
+### Plugin Setup
+
+```bash
+# 1. Create package.json
+mkdir -p .opencode
+cat > .opencode/package.json << 'EOF'
+{
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.48.0"
+  }
 }
-```
+EOF
 
-- Silently ignores missing `.env` files
-- Non-blocking: if no `.env` exists, shells still work normally
+# 2. Install dependencies
+cd .opencode
+bun install
 
-### 3. Quote Stripping
+# 3. Create plugin
+cat > .opencode/plugins/load-dotenv.js << 'EOF'
+import { config } from "@dotenvx/dotenvx"
 
-```js
-if ((val.startsWith('"') && val.endsWith('"')) ||
-    (val.startsWith("'") && val.endsWith("'"))) {
-  val = val.slice(1, -1)
+export const LoadDotEnv = async ({ directory }) => {
+  return {
+    "shell.env": async (input, output) => {
+      const processEnv = {}
+      const nodeEnv = process.env.NODE_ENV || "development"
+      
+      const result = config({
+        path: input.cwd ?? directory,
+        convention: "flow",
+        processEnv,
+        quiet: true,
+        ignore: ["MISSING_ENV_FILE"],
+      })
+      
+      if (result.parsed) {
+        for (const [key, value] of Object.entries(result.parsed)) {
+          if (!(key in output.env)) {
+            output.env[key] = value
+          }
+        }
+      }
+      
+      if (!("NODE_ENV" in output.env)) {
+        output.env.NODE_ENV = nodeEnv
+      }
+    },
+  }
 }
+EOF
+
+# 4. Restart OpenCode
 ```
 
-- Handles both single and double quoted values
-- Standard `.env` format support
+### Flow Convention File Order (NODE_ENV=development)
 
-### 4. Comment & Empty Line Handling
-
-```js
-if (!trimmed || trimmed.startsWith("#")) continue
+```
+1. .env.development.local  (highest priority)
+2. .env.development
+3. .env.local
+4. .env                 (lowest priority)
 ```
 
-- Skips empty lines
-- Skips comment lines (starting with `#`)
+### Common Commands
+
+```bash
+# Encrypt an existing .env file
+dotenvx encrypt
+
+# Set an encrypted value
+dotenvx set API_KEY "secret-value"
+
+# Get a decrypted value
+dotenvx get API_KEY
+
+# Run with specific environment
+NODE_ENV=production dotenvx run --convention=flow -- node index.js
+
+# List all .env files
+dotenvx ls
+```
+
+---
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+When using this plugin with GitHub Actions, you don't need to modify your workflow - the plugin will automatically load encrypted environment variables if you provide the private key.
+
+```yaml
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Set the production private key as a repository secret
+      - name: Set production private key
+        run: echo "DOTENV_PRIVATE_KEY=${{ secrets.DOTENV_PRIVATE_KEY_PRODUCTION }}" >> $GITHUB_ENV
+
+      # Install dependencies (includes plugin)
+      - name: Install dependencies
+        run: bun install
+
+      # Run your tests or deployment
+      # The plugin will automatically decrypt .env.production
+      - name: Run tests
+        run: NODE_ENV=production bun test
+```
+
+### Using dotenvx Run in CI
+
+If you're not using the plugin (e.g., for deployment scripts):
+
+```bash
+# With the private key set as an environment variable
+DOTENV_PRIVATE_KEY="${DOTENV_PRIVATE_KEY_PRODUCTION}" dotenvx run --convention=flow -- npm run build
+```
+
+### Private Key Management
+
+1. **Generate keys locally:**
+   ```bash
+   dotenvx encrypt --env production
+   ```
+
+2. **Extract private key from `.env.keys`:**
+   ```bash
+   cat .env.keys | grep DOTENV_PRIVATE_KEY_PRODUCTION
+   ```
+
+3. **Add as secret in your CI/CD platform:**
+   - GitHub Actions: Settings → Secrets → New repository secret
+   - GitLab CI/CD: Settings → CI/CD → Variables
+   - CircleCI: Project Settings → Environment Variables
 
 ---
 
@@ -225,120 +822,62 @@ OpenCode has a built-in `.env` loader, but it only loads environment variables f
 
 ---
 
-## Extensions
+## Testing the Plugin
 
-### Loading Multiple Files
+### 1. Install Dependencies
 
-To load from `.env`, `.env.local`, `.env.development`, etc.:
-
-```js
-export const LoadDotEnv = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const basePath = input.cwd ?? directory
-      const files = [".env.local", ".env.development", ".env"]
-      
-      for (const file of files) {
-        const envPath = join(basePath, file)
-        try {
-          const contents = readFileSync(envPath, "utf8")
-          // ... parse and set output.env[key] = val
-        } catch {
-          // Skip missing files
-        }
-      }
-    },
-  }
-}
-```
-
-### Using External Dependencies
-
-If you need to use an npm package like `dotenv`:
-
-1. Create `.opencode/package.json`:
+Create `.opencode/package.json`:
 
 ```json
 {
   "dependencies": {
-    "dotenv": "^16.0.0"
+    "@dotenvx/dotenvx": "^1.48.0"
   }
 }
 ```
 
-2. OpenCode runs `bun install` at startup automatically.
+### 2. Create the Plugin
 
-3. Use in plugin:
+Create `.opencode/plugins/load-dotenv.js` with the implementation above.
 
-```js
-import { config } from "dotenv"
-import { join } from "path"
-
-export const LoadDotEnv = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const basePath = input.cwd ?? directory
-      const result = config({ path: join(basePath, ".env") })
-      if (result.parsed) {
-        Object.assign(output.env, result.parsed)
-      }
-    },
-  }
-}
-```
-
----
-
-## Alternative Approaches
-
-### Option 1: Simple Fixed Variables
-
-If you only need to inject a few fixed variables:
-
-```js
-export const InjectEnvPlugin = async () => {
-  return {
-    "shell.env": async (input, output) => {
-      output.env.MY_API_KEY = "secret"
-      output.env.PROJECT_ROOT = input.cwd
-    },
-  }
-}
-```
-
-**Pros:** Simple, no file I/O  
-**Cons:** Hardcoded, not flexible
-
-### Option 2: Full DotEnv Plugin (Recommended)
-
-As shown above - reads from `.env` file.
-
-**Pros:** Flexible, follows standard `.env` format  
-**Cons:** Slight overhead of file reading
-
-### Option 3: Using npm `dotenv` Package
-
-**Pros:** Handles all edge cases (multiline values, escaping, etc.)  
-**Cons:** Requires dependency, slightly more complex setup
-
----
-
-## Testing the Plugin
-
-1. Create the plugin file at `.opencode/plugins/load-dotenv.js`
-2. Create a `.env` file in your project:
-
-```env
-MY_SECRET=supersecret
-API_KEY=abc123
-```
-
-3. Start OpenCode
-4. Run a shell command and verify:
+### 3. Create Environment Files
 
 ```bash
-echo $MY_SECRET
-# Should output: supersecret
+# Default values
+echo "APP_NAME=MyApp" > .env
+echo "DATABASE_HOST=localhost" >> .env
+
+# Development overrides
+echo "APP_NAME=MyApp (Dev)" > .env.development
+echo "DEBUG=true" >> .env.development
+
+# Local overrides (gitignored)
+echo "DATABASE_PASSWORD=local-secret" > .env.local
+```
+
+### 4. Test Encrypted Values (Optional)
+
+```bash
+# Install dotenvx CLI
+npm install -g @dotenvx/dotenvx
+
+# Encrypt a value
+dotenvx set SECRET_KEY "my-secret-value"
+
+# This creates an encrypted entry in .env and adds key to .env.keys
+```
+
+### 5. Restart OpenCode and Verify
+
+```bash
+echo $APP_NAME
+# Should output: MyApp (Dev)
+
+echo $NODE_ENV
+# Should output: development
+
+echo $DATABASE_HOST
+# Should output: localhost
 ```
 
 ---
@@ -362,4 +901,8 @@ The plugin system supports many other events:
 
 - [OpenCode Plugins Documentation](https://opencode.ai/docs/plugins/)
 - [OpenCode SDK Documentation](https://opencode.ai/docs/sdk/)
-- [OpenCode Ecosystem - Community Plugins](https://opencode.ai/docs/ecosystem#plugins)
+- [Dotenvx Documentation](https://dotenvx.com/docs/)
+- [Dotenvx Flow Convention](https://dotenvx.com/docs/advanced/config-convention#flow-convention)
+- [Dotenvx Encryption Guide](https://dotenvx.com/docs/quickstart/encryption)
+- [Dotenvx GitHub](https://github.com/dotenvx/dotenvx)
+- [Dotenvx npm Package](https://www.npmjs.com/package/@dotenvx/dotenvx)
