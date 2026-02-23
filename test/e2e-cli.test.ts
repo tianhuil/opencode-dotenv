@@ -3,7 +3,7 @@ import { $ } from "bun"
 import { join } from "path"
 import { mkdir, writeFile, rm } from "fs/promises"
 
-const e2eDir = join(import.meta.dir)
+const e2eDir = join(import.meta.dir, "fixtures", "e2e")
 
 async function setupE2EDir() {
   await mkdir(e2eDir, { recursive: true })

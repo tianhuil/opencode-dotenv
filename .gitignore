@@ -15,11 +15,13 @@ logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# dotenv environment variable files
-# .env - Uncomment if you commit default values (safe if no secrets)
-# .env.development - Uncomment if you commit development defaults (safe if no secrets)
-# .env.test - Uncomment if you commit test defaults (safe if no secrets)
-# .env.production - Uncomment if you commit production defaults (safe if no secrets)
+# dotenv environment variable files (project root only)
+.env
+.env.local
+.env.*.local
+/.env.development
+/.env.production
+/.env.test
 
 # Environment keys (private decryption keys)
 .env.keys
