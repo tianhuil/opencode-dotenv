@@ -41,7 +41,7 @@ Plugins are automatically loaded from these directories at startup:
 | `.opencode/plugins/` | Project-level (only this project) |
 | `~/.config/opencode/plugins/` | Global (all projects) |
 
-Both `.js` and `.ts` files are supported.
+Both `.js` and `.ts` files are supported, but TypeScript is recommended for type safety.
 
 ### Plugin Structure
 
@@ -91,7 +91,7 @@ The `shell.env` event fires **before every shell execution**, including:
 
 From the documentation:
 
-```js
+```ts
 export const InjectEnvPlugin = async () => {
   return {
     "shell.env": async (input, output) => {
@@ -126,7 +126,7 @@ opencode-dotenv/
 ├── .opencode/
 │   ├── package.json             # Dependencies for shim
 │   └── plugins/
-│       └── load-dotenv.js      # Shim (imports from src)
+│       └── load-dotenv.ts      # Shim (imports from src)
 ├── package.json                 # Root dependencies
 ├── test-plugin.ts               # Test suite
 └── notes/
@@ -166,12 +166,12 @@ OpenCode runs `bun install` at startup automatically.
 ### File Location
 
 ```
-.opencode/plugins/load-dotenv.js
+.opencode/plugins/load-dotenv.ts
 ```
 
 ### Complete Implementation
 
-```js
+```ts
 import { config } from "@dotenvx/dotenvx"
 import { join } from "path"
 
@@ -213,15 +213,15 @@ export const LoadDotEnv = async ({ directory }) => {
 }
 ```
 
-### Shim File (.opencode/plugins/load-dotenv.js)
+### Shim File (.opencode/plugins/load-dotenv.ts)
 
 OpenCode loads this shim file, which imports the actual implementation:
 
-```js
+```ts
 // OpenCode Plugin Shim
 // This file is loaded by OpenCode and re-exports the actual plugin implementation from src/
 
-import { LoadDotEnv } from "../../src/load-dotenv.js"
+import { LoadDotEnv } from "../../src/load-dotenv"
 
 // OpenCode expects an async function that receives context and returns hooks
 export const LoadDotEnvPlugin = async (context) => {
@@ -232,7 +232,7 @@ export const LoadDotEnvPlugin = async (context) => {
 }
 ```
 
-**Note:** The shim imports the `.js` compiled version from `src/load-dotenv.ts`.
+**Note:** The shim imports from the TypeScript file `src/load-dotenv.ts`. Bun automatically handles `.ts` files.
 
 ---
 
@@ -322,7 +322,7 @@ LOG_LEVEL=info
 ```ts
 // test/load-dotenv.test.ts
 import { test, expect, describe, beforeEach, afterEach } from "bun:test"
-import { loadDotEnvFiles } from "../src/load-dotenv.js"
+import { loadDotEnvFiles } from "../src/load-dotenv"
 import { tmpdir } from "os"
 import { join } from "path"
 
@@ -573,7 +573,7 @@ The plugin automatically decrypts encrypted values if:
 1. **`.env.keys` file exists** in the project directory, OR
 2. **`DOTENV_PRIVATE_KEY` environment variable** is set
 
-```js
+```ts
 // The config() call handles decryption automatically
 const result = config({
   path: basePath,
@@ -627,7 +627,7 @@ The `config()` function accepts these options:
 
 ### 1. Using `processEnv` Object
 
-```js
+```ts
 const processEnv = {}
 const result = config({ processEnv, ... })
 ```
@@ -637,7 +637,7 @@ const result = config({ processEnv, ... })
 
 ### 2. Default NODE_ENV to Development
 
-```js
+```ts
 const nodeEnv = process.env.NODE_ENV || "development"
 ```
 
@@ -646,7 +646,7 @@ const nodeEnv = process.env.NODE_ENV || "development"
 
 ### 3. Non-Overriding Merge
 
-```js
+```ts
 if (!(key in output.env)) {
   output.env[key] = value
 }
@@ -657,7 +657,7 @@ if (!(key in output.env)) {
 
 ### 4. Quiet Mode
 
-```js
+```ts
 config({ quiet: true, ... })
 ```
 
@@ -674,7 +674,7 @@ config({ quiet: true, ... })
 
 To let `.env` values override existing environment variables:
 
-```js
+```ts
 const result = config({
   path: basePath,
   convention: "flow",
@@ -688,7 +688,7 @@ const result = config({
 
 Load from a custom directory:
 
-```js
+```ts
 const result = config({
   path: join(basePath, "config"),
   convention: "flow",
@@ -810,7 +810,7 @@ VERBOSE_LOGGING=true
 3. Check that `@dotenvx/dotenvx` is installed (run `bun install` in `.opencode/`)
 4. Enable debug mode to see what's happening:
 
-```js
+```ts
 const result = config({
   path: basePath,
   convention: "flow",
@@ -860,7 +860,7 @@ opencode-dotenv/
 ├── .opencode/
 │   ├── package.json             # Dependencies for shim
 │   └── plugins/
-│       └── load-dotenv.js      # Shim (imports from src)
+│       └── load-dotenv.ts      # Shim (imports from src)
 ├── package.json                 # Root dependencies
 ├── test-plugin.ts               # Test suite
 └── notes/
@@ -877,9 +877,9 @@ mkdir -p src .opencode/plugins
 # (See src/load-dotenv.ts for full implementation)
 
 # 3. Create shim file in .opencode/plugins/
-cat > .opencode/plugins/load-dotenv.js << 'EOF'
+cat > .opencode/plugins/load-dotenv.ts << 'EOF'
 // OpenCode Plugin Shim
-import { LoadDotEnv } from "../../src/load-dotenv.js"
+import { LoadDotEnv } from "../../src/load-dotenv"
 
 export const LoadDotEnvPlugin = async (context) => {
   return LoadDotEnv({
