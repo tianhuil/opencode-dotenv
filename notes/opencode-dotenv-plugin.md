@@ -354,58 +354,107 @@ describe("loadDotEnvFiles", () => {
 
 ### E2E Tests
 
-#### Approach
+#### CLI Integration Test
 
-Three options:
+**Purpose:** Verify the plugin works end-to-end by running OpenCode CLI and requesting environment variables.
 
-1. **Plugin API Test** (recommended) - Use OpenCode test utilities
-2. **Mock OpenCode** - Simulate environment without full binary
-3. **Full E2E** - Launch actual OpenCode and test
-
-#### Test Scenarios
-
-| # | Scenario | Description |
-|---|----------|-------------|
-| 1 | Basic Loading | `echo $APP_NAME` returns correct value |
-| 2 | Env-Specific | `NODE_ENV=production` loads prod vars |
-| 3 | Encrypted Vars | Decrypted values, not "encrypted:..." |
-| 4 | Persistence | Vars available across shell spawns |
-| 5 | Interactive | Terminal shows vars, tab completion works |
-| 6 | Concurrent | Multiple shells get correct vars |
-
-#### E2E Test Structure
+**Test Structure:**
 
 ```ts
-// test/e2e.test.ts
-import { test, expect, describe } from "bun:test"
+// test/e2e-cli.test.ts
+import { test, expect, describe, beforeEach } from "bun:test"
 import { $ } from "bun"
 
-describe("E2E: OpenCode Plugin Integration", () => {
-  test("loads environment variables into bash commands", async () => {
-    const result = await opencode.bash("echo $APP_NAME")
-    expect(result.stdout.trim()).toBe("TestApp")
+describe("E2E: OpenCode CLI Integration", () => {
+  beforeEach(() => {
+    // Ensure test environment variables are set
+    process.env.NODE_ENV = "test"
   })
 
-  test("respects NODE_ENV for environment selection", async () => {
-    const result = await opencode.bash("echo $API_URL", {
-      env: { NODE_ENV: "production" }
-    })
-    expect(result.stdout.trim()).toBe("https://api.example.com")
+  test("loads environment variable and makes it available to OpenCode", async () => {
+    // Generate random string for unique test
+    const randomString = `test-value-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    
+    // Create temporary .env file with test variable
+    await $`echo "TEST_VAR=${randomString}" > .env.test`
+    
+    try {
+      // Run OpenCode CLI asking for the environment variable
+      // The plugin should load .env.test and inject TEST_VAR
+      const result = await $`opencode run 'print the value of TEST_VAR environment variable'`
+      
+      // Verify the output contains our random string
+      expect(result.stdout).toContain(randomString)
+      expect(result.exitCode).toBe(0)
+    } finally {
+      // Cleanup test file
+      await $`rm -f .env.test`
+    }
   })
 })
 ```
 
-**Alternative: Script-based E2E**
+**Test Execution:**
+
+```bash
+# Run the CLI integration tests
+bun test test/e2e-cli.test.ts
+
+# Run all tests
+bun test
+```
+
+**Test Command Breakdown:**
 
 ```ts
-#!/usr/bin/env bun
-import { $ } from "bun"
-
-const test1 = await $`opencode exec -- bash -c 'echo $APP_NAME'`
-if (test1.stdout.trim() === "TestApp") {
-  console.log("✅ E2E test passed")
-}
+// The command flow:
+// 1. opencode run 'print the value of TEST_VAR environment variable'
+//    ↓
+// 2. OpenCode loads the plugin
+//    ↓
+// 3. Plugin calls shell.env hook before executing bash
+//    ↓
+// 4. Plugin loads .env.test (via dotenvx with flow convention)
+//    ↓
+// 5. Plugin injects TEST_VAR into bash environment
+//    ↓
+// 6. OpenCode asks AI to print TEST_VAR
+//    ↓
+// 7. AI uses bash tool to echo $TEST_VAR
+//    ↓
+// 8. Bash returns the value (our random string)
+//    ↓
+// 9. AI includes it in response
+//    ↓
+// 10. Test verifies output contains random string
 ```
+
+**Advantages of CLI Integration Test:**
+
+- ✅ **Real OpenCode execution** - Tests actual CLI behavior
+- ✅ **No test utilities needed** - Uses Bun's built-in `$` shell
+- ✅ **End-to-end verification** - Tests full plugin → bash → AI pipeline
+- ✅ **Simple and maintainable** - Straightforward test logic
+- ✅ **Isolated** - Uses temporary `.env.test` files, no side effects
+
+**Notes:**
+
+- Tests use `opencode run` which executes a single prompt
+- Random strings ensure tests don't accidentally pass due to cached values
+- Cleanup with `try/finally` to remove test files
+- `NODE_ENV=test` is set to match test environment convention
+- Tests verify both `stdout` content and `exitCode` (success status)
+
+#### Additional Test Scenarios
+
+| # | Scenario | Description |
+|---|----------|-------------|
+| 1 | Basic CLI Test | ✅ `opencode run` with env variable (above) |
+| 2 | Multiple Vars | ✅ Load multiple env vars simultaneously |
+| 3 | Flow Convention | ✅ Respect NODE_ENV for env selection |
+| 4 | Encrypted Vars | Load encrypted values, verify decryption |
+| 5 | Missing Files | Graceful handling when .env missing |
+| 6 | Interactive Mode | Test in interactive terminal (manual) |
 
 ### Test Execution
 
@@ -421,9 +470,9 @@ if (test1.stdout.trim() === "TestApp") {
 4. Run: `bun test test/load-dotenv.test.ts`
 
 **Phase 3: E2E Tests**
-1. Create test configuration
-2. Implement `test/e2e.test.ts`
-3. Run: `bun test test/e2e.test.ts`
+1. Implement `test/e2e-cli.test.ts`
+2. Ensure OpenCode CLI is installed and in PATH
+3. Run: `bun test test/e2e-cli.test.ts`
 
 ### Test Scripts
 
@@ -434,7 +483,7 @@ Add to `package.json`:
   "scripts": {
     "test": "bun test",
     "test:unit": "bun test test/load-dotenv.test.ts",
-    "test:e2e": "bun test test/e2e.test.ts"
+    "test:e2e": "bun test test/e2e-cli.test.ts"
   }
 }
 ```
