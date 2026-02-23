@@ -215,24 +215,16 @@ export const LoadDotEnv = async ({ directory }) => {
 
 ### Shim File (.opencode/plugins/load-dotenv.ts)
 
-OpenCode loads this shim file, which imports the actual implementation:
+OpenCode loads this shim file, which re-exports the plugin from `src/`:
 
 ```ts
 // OpenCode Plugin Shim
-// This file is loaded by OpenCode and re-exports the actual plugin implementation from src/
+// This file is loaded by OpenCode and re-exports the plugin from src/
 
-import { LoadDotEnv } from "../../src/load-dotenv"
-
-// OpenCode expects an async function that receives context and returns hooks
-export const LoadDotEnvPlugin = async (context) => {
-  return LoadDotEnv({
-    defaultNodeEnv: "development",
-    overload: false,
-  })
-}
+export { LoadDotEnv as LoadDotEnvPlugin } from "../../src/load-dotenv"
 ```
 
-**Note:** The shim imports from the TypeScript file `src/load-dotenv.ts`. Bun automatically handles `.ts` files.
+**Note:** The shim re-exports from the TypeScript file `src/load-dotenv.ts`. Bun automatically handles `.ts` files.
 
 ---
 
@@ -879,14 +871,8 @@ mkdir -p src .opencode/plugins
 # 3. Create shim file in .opencode/plugins/
 cat > .opencode/plugins/load-dotenv.ts << 'EOF'
 // OpenCode Plugin Shim
-import { LoadDotEnv } from "../../src/load-dotenv"
-
-export const LoadDotEnvPlugin = async (context) => {
-  return LoadDotEnv({
-    defaultNodeEnv: "development",
-    overload: false,
-  })
-}
+// Re-export the plugin from src/
+export { LoadDotEnv as LoadDotEnvPlugin } from "../../src/load-dotenv"
 EOF
 
 # 4. Create .opencode/package.json
