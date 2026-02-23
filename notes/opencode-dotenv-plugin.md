@@ -242,10 +242,10 @@ export const LoadDotEnvPlugin = async (context) => {
 
 Two complementary test approaches ensure plugin reliability:
 
-1. **Unit/Integration Tests** - Test core dotenvx loading logic in isolation
+1. **Unit Tests** - Test core dotenvx loading logic in isolation
 2. **E2E Tests** - Test full OpenCode plugin integration
 
-### Unit/Integration Tests
+### Unit Tests
 
 #### Architecture
 
@@ -354,7 +354,7 @@ describe("loadDotEnvFiles", () => {
 
 ### E2E Tests
 
-#### CLI Integration Test
+#### CLI Test
 
 **Purpose:** Verify the plugin works end-to-end by running OpenCode CLI and requesting environment variables.
 
@@ -365,7 +365,7 @@ describe("loadDotEnvFiles", () => {
 import { test, expect, describe, beforeEach } from "bun:test"
 import { $ } from "bun"
 
-describe("E2E: OpenCode CLI Integration", () => {
+describe("E2E: OpenCode CLI", () => {
   beforeEach(() => {
     // Ensure test environment variables are set
     process.env.NODE_ENV = "test"
@@ -429,7 +429,7 @@ bun test
 // 10. Test verifies output contains random string
 ```
 
-**Advantages of CLI Integration Test:**
+**Advantages of CLI Test:**
 
 - ✅ **Real OpenCode execution** - Tests actual CLI behavior
 - ✅ **No test utilities needed** - Uses Bun's built-in `$` shell
@@ -977,10 +977,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # Run your tests or deployment
+      # Run unit tests only (E2E tests require OpenCode CLI)
       # The plugin will automatically decrypt .env.production
-      - name: Run tests
-        run: NODE_ENV=production bun test
+      - name: Run unit tests
+        run: bun run test:unit
 ```
 
 ### Using dotenvx Run in CI
