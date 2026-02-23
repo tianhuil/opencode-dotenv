@@ -174,8 +174,9 @@ OpenCode runs `bun install` at startup automatically.
 ```ts
 import { config } from "@dotenvx/dotenvx"
 import { join } from "path"
+import type { Plugin } from "@opencode-ai/plugin"
 
-export const LoadDotEnv = async ({ directory }) => {
+export const LoadDotEnv: Plugin = async ({ directory }) => {
   return {
     "shell.env": async (input, output) => {
       const basePath = input.cwd ?? directory
