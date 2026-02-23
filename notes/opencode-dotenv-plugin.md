@@ -106,6 +106,49 @@ export const InjectEnvPlugin = async () => {
 
 ## Implementation: Dotenvx Plugin (Recommended)
 
+### Project Structure with Shim Pattern
+
+For this repository, we use a **shim pattern** where:
+
+- **Source code** lives in `src/` for development and testing
+- **Shim file** in `.opencode/plugins/` imports from `src/`
+
+This separation allows:
+- ✅ Development with TypeScript
+- ✅ Unit/integration testing with test suites
+- ✅ Type safety and editor support
+- ✅ Easy testing without OpenCode
+
+```
+opencode-dotenv/
+├── src/
+│   └── load-dotenv.ts          # Main implementation (TypeScript)
+├── .opencode/
+│   ├── package.json             # Dependencies for shim
+│   └── plugins/
+│       └── load-dotenv.js      # Shim (imports from src)
+├── package.json                 # Root dependencies
+├── test-plugin.ts               # Test suite
+└── notes/
+    └── opencode-dotenv-plugin.md # This documentation
+```
+
+### Prerequisites
+
+Create `.opencode/package.json` to install dotenvx:
+
+```json
+{
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.48.0"
+  }
+}
+```
+
+OpenCode runs `bun install` at startup automatically.
+
+### Main Implementation (src/load-dotenv.ts)
+
 ### Prerequisites
 
 Create `.opencode/package.json` to install dotenvx:
@@ -170,49 +213,116 @@ export const LoadDotEnv = async ({ directory }) => {
 }
 ```
 
-### TypeScript Version
+### Shim File (.opencode/plugins/load-dotenv.js)
+
+OpenCode loads this shim file, which imports the actual implementation:
+
+```js
+// OpenCode Plugin Shim
+// This file is loaded by OpenCode and re-exports the actual plugin implementation from src/
+
+import { LoadDotEnv } from "../../src/load-dotenv.js"
+
+// OpenCode expects an async function that receives context and returns hooks
+export const LoadDotEnvPlugin = async (context) => {
+  return LoadDotEnv({
+    defaultNodeEnv: "development",
+    overload: false,
+  })
+}
+```
+
+**Note:** The shim imports the `.js` compiled version from `src/load-dotenv.ts`.
+
+---
+
+## Testing the Plugin
+
+### Test Suite Structure
+
+Create a test file that simulates OpenCode's behavior:
 
 ```ts
-import { config, type DotenvConfigOutput, type DotenvPopulateInput } from "@dotenvx/dotenvx"
-import { join } from "path"
-import type { Plugin } from "@opencode-ai/plugin"
+#!/usr/bin/env bun
 
-export const LoadDotEnv: Plugin = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const basePath = input.cwd ?? directory
-      
-      // Use a custom processEnv object to capture parsed values
-      const processEnv: DotenvPopulateInput = {}
-      
-      // Default NODE_ENV to 'development' if not set
-      const nodeEnv = process.env.NODE_ENV || "development"
-      
-      // Load env files using dotenv-flow convention
-      const result = config({
-        path: basePath,
-        convention: "flow",
-        processEnv,
-        quiet: true,
-        ignore: ["MISSING_ENV_FILE"],
-      })
-      
-      // Merge parsed values into output.env (don't override existing)
-      if (result.parsed) {
-        for (const [key, value] of Object.entries(result.parsed)) {
-          if (!(key in output.env)) {
-            output.env[key] = value
-          }
-        }
-      }
-      
-      // Also set NODE_ENV in the shell if it wasn't already set
-      if (!("NODE_ENV" in output.env)) {
-        output.env.NODE_ENV = nodeEnv
-      }
-    },
-  }
+/**
+ * Test script for the LoadDotEnv plugin
+ * Simulates how OpenCode would call the plugin
+ */
+
+import { LoadDotEnv } from "./src/load-dotenv.js"
+
+// Simulated OpenCode context
+const mockContext = {
+  directory: process.cwd(),
+  project: { name: "test-project" },
+  client: null,
+  $: null,
+  worktree: null,
 }
+
+// Simulated input for shell.env hook
+const mockInput = {
+  cwd: process.cwd(),
+}
+
+// Simulated output for shell.env hook
+const mockOutput = {
+  env: {},
+}
+
+// Set test NODE_ENV
+process.env.NODE_ENV = "development"
+
+// Create the plugin
+const plugin = LoadDotEnv({
+  defaultNodeEnv: "development",
+  overload: false,
+})
+
+// Simulate OpenCode calling the shell.env hook
+await plugin["shell.env"](mockInput, mockOutput, mockContext)
+
+// Verify results
+console.log("Environment variables loaded:")
+for (const [key, value] of Object.entries(mockOutput.env)) {
+  console.log(`  ${key}=${value}`)
+}
+```
+
+### Running Tests
+
+```bash
+# Run the test suite
+bun test-plugin.ts
+
+# Expected output:
+# 🧪 Testing LoadDotEnv Plugin
+# ✅ Plugin created successfully
+# [dotenvx@1.X.X] injecting env (X) from .env.development, .env.local, .env
+# ✅ Plugin executed successfully
+# 📊 Environment variables loaded:
+#   DEBUG=true
+#   APP_NAME=MyApp
+#   NODE_ENV=development
+# ✨ Test complete!
+```
+
+### Test Environment Files
+
+Create test files to verify the plugin:
+
+```bash
+# .env - Global defaults
+echo "APP_NAME=MyApp" > .env
+echo "DATABASE_HOST=localhost" >> .env
+
+# .env.development - Development overrides
+echo "APP_NAME=MyApp (Dev)" > .env.development
+echo "DEBUG=true" >> .env.development
+
+# .env.local - Local overrides (gitignored)
+echo "LOCAL_MACHINE=$(hostname)" > .env.local
 ```
 
 ---
@@ -570,58 +680,72 @@ const result = config({
 
 ## Quick Reference Card
 
-### Plugin Setup
+### Project Structure
+
+```
+opencode-dotenv/
+├── src/
+│   └── load-dotenv.ts          # Main implementation (TypeScript)
+├── .opencode/
+│   ├── package.json             # Dependencies for shim
+│   └── plugins/
+│       └── load-dotenv.js      # Shim (imports from src)
+├── package.json                 # Root dependencies
+├── test-plugin.ts               # Test suite
+└── notes/
+    └── opencode-dotenv-plugin.md # This documentation
+```
+
+### Setup Steps
 
 ```bash
-# 1. Create package.json
-mkdir -p .opencode
+# 1. Create directory structure
+mkdir -p src .opencode/plugins
+
+# 2. Create main plugin file in src/
+# (See src/load-dotenv.ts for full implementation)
+
+# 3. Create shim file in .opencode/plugins/
+cat > .opencode/plugins/load-dotenv.js << 'EOF'
+// OpenCode Plugin Shim
+import { LoadDotEnv } from "../../src/load-dotenv.js"
+
+export const LoadDotEnvPlugin = async (context) => {
+  return LoadDotEnv({
+    defaultNodeEnv: "development",
+    overload: false,
+  })
+}
+EOF
+
+# 4. Create .opencode/package.json
 cat > .opencode/package.json << 'EOF'
 {
+  "name": "opencode-dotenv-plugin",
+  "private": true,
   "dependencies": {
     "@dotenvx/dotenvx": "^1.48.0"
   }
 }
 EOF
 
-# 2. Install dependencies
-cd .opencode
-bun install
+# 5. Install dependencies
+cd .opencode && bun install && cd ..
 
-# 3. Create plugin
-cat > .opencode/plugins/load-dotenv.js << 'EOF'
-import { config } from "@dotenvx/dotenvx"
+# 6. Test the plugin
+bun test-plugin.ts
 
-export const LoadDotEnv = async ({ directory }) => {
-  return {
-    "shell.env": async (input, output) => {
-      const processEnv = {}
-      const nodeEnv = process.env.NODE_ENV || "development"
-      
-      const result = config({
-        path: input.cwd ?? directory,
-        convention: "flow",
-        processEnv,
-        quiet: true,
-        ignore: ["MISSING_ENV_FILE"],
-      })
-      
-      if (result.parsed) {
-        for (const [key, value] of Object.entries(result.parsed)) {
-          if (!(key in output.env)) {
-            output.env[key] = value
-          }
-        }
-      }
-      
-      if (!("NODE_ENV" in output.env)) {
-        output.env.NODE_ENV = nodeEnv
-      }
-    },
-  }
-}
-EOF
+# 7. Restart OpenCode (it will auto-load the plugin)
+```
 
-# 4. Restart OpenCode
+### Development Workflow
+
+```bash
+# 1. Edit src/load-dotenv.ts (TypeScript with types)
+# 2. Run tests
+bun test-plugin.ts
+# 3. Restart OpenCode to load changes
+# OpenCode will recompile and load the shim automatically
 ```
 
 ### Flow Convention File Order (NODE_ENV=development)
@@ -722,52 +846,6 @@ OpenCode has a built-in `.env` loader, but it only loads environment variables f
 - OpenCode's own configuration
 
 **It does NOT make these variables available inside the shells it spawns.** This plugin bridges that gap.
-
----
-
-### 2. Create the Plugin
-
-Create `.opencode/plugins/load-dotenv.js` with the implementation above.
-
-### 3. Create Environment Files
-
-```bash
-# Default values
-echo "APP_NAME=MyApp" > .env
-echo "DATABASE_HOST=localhost" >> .env
-
-# Development overrides
-echo "APP_NAME=MyApp (Dev)" > .env.development
-echo "DEBUG=true" >> .env.development
-
-# Local overrides (gitignored)
-echo "DATABASE_PASSWORD=local-secret" > .env.local
-```
-
-### 4. Test Encrypted Values (Optional)
-
-```bash
-# Install dotenvx CLI
-npm install -g @dotenvx/dotenvx
-
-# Encrypt a value
-dotenvx set SECRET_KEY "my-secret-value"
-
-# This creates an encrypted entry in .env and adds key to .env.keys
-```
-
-### 5. Restart OpenCode and Verify
-
-```bash
-echo $APP_NAME
-# Should output: MyApp (Dev)
-
-echo $NODE_ENV
-# Should output: development
-
-echo $DATABASE_HOST
-# Should output: localhost
-```
 
 ---
 
