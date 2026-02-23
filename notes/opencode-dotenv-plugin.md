@@ -778,6 +778,467 @@ dotenvx ls
 
 ---
 
+## Testing Strategy
+
+### Overview
+
+The testing approach consists of two complementary test types:
+
+1. **Unit/Integration Test** - Tests the core dotenvx loading logic in isolation with mocked directories
+2. **E2E Test** - Tests the full OpenCode plugin integration including bash command execution
+
+---
+
+### Test 1: Unit/Integration Test (Core Functionality)
+
+#### Purpose
+
+Test the environment variable loading logic independently of the OpenCode plugin system. This allows for:
+- Fast iteration during development
+- Easy debugging without OpenCode context
+- Comprehensive coverage of edge cases
+- Testing in a controlled environment
+
+#### Architecture Changes Required
+
+**Extract Core Function:**
+
+The current implementation needs refactoring to separate concerns:
+
+```ts
+// Current (monolithic in shell.env hook):
+"shell.env": async (input, output) => {
+  // All dotenvx logic here...
+}
+
+// Proposed (separated):
+async function loadDotEnvFiles(basePath: string, options: LoadDotEnvOptions): Promise<Record<string, string>> {
+  // Pure dotenvx loading logic
+  // Returns: { key1: "value1", key2: "value2", ... }
+}
+
+"shell.env": async (input, output) => {
+  const loaded = await loadDotEnvFiles(input.cwd, options)
+  Object.assign(output.env, loaded)
+}
+```
+
+**Benefits of separation:**
+- Core function is testable without OpenCode
+- Clear input/output boundaries
+- Easier to mock dependencies
+- Can export for use in other contexts
+
+#### Mock Test Directory Structure
+
+Create a dedicated test directory committed to the repository:
+
+```
+test/fixtures/
+├── env-loading/
+│   ├── .env                      # Global defaults
+│   ├── .env.development          # Development overrides
+│   ├── .env.development.local    # Dev local overrides (gitignored)
+│   ├── .env.local                # Local overrides (gitignored)
+│   ├── .env.production           # Production defaults
+│   ├── .env.test                 # Test environment defaults
+│   └── .env.keys                 # Encryption keys (gitignored)
+└── encrypted-env/
+    ├── .env                      # Encrypted values
+    └── .env.keys                 # Decryption keys (gitignored)
+```
+
+**Test file contents (to be committed):**
+
+`.env` (Global defaults):
+```env
+APP_NAME=TestApp
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+LOG_LEVEL=info
+NODE_ENV_DEFAULT=default
+```
+
+`.env.development`:
+```env
+DEBUG=true
+LOG_LEVEL=debug
+API_URL=http://localhost:3000
+APP_NAME=TestApp (Development)
+```
+
+`.env.production`:
+```env
+LOG_LEVEL=warn
+API_URL=https://api.example.com
+APP_NAME=TestApp (Production)
+```
+
+`.env.test`:
+```env
+TEST_MODE=true
+LOG_LEVEL=test
+API_URL=http://test-api.example.com
+```
+
+**Note:** `.env.keys`, `.env.local`, and `*.local` files should be added to `.gitignore`.
+
+#### Test Scenarios
+
+**Scenario 1: Basic Loading**
+- Load `.env` only
+- Verify all variables are loaded
+- Check that no override occurs
+
+**Scenario 2: Flow Convention (NODE_ENV=development)**
+- Load with `NODE_ENV=development`
+- Verify loading order: `.env.development.local` > `.env.development` > `.env.local` > `.env`
+- Check that higher-priority files override lower-priority ones
+- Verify `APP_NAME` has development value
+
+**Scenario 3: Flow Convention (NODE_ENV=production)**
+- Load with `NODE_ENV=production`
+- Verify loading order for production
+- Check production-specific variables
+
+**Scenario 4: Flow Convention (NODE_ENV=test)**
+- Load with `NODE_ENV=test`
+- Verify test environment variables
+
+**Scenario 5: Missing Files**
+- Load from directory with no `.env` files
+- Verify no errors thrown
+- Verify empty result
+
+**Scenario 6: Variable Expansion**
+- Test variable substitution (if supported)
+- Example: `DATABASE_URL=postgres://${DATABASE_HOST}:${DATABASE_PORT}/db`
+
+**Scenario 7: Encryption/Decryption**
+- Load encrypted `.env` file with decryption key
+- Verify values are decrypted correctly
+- Test without key (should return encrypted strings or handle gracefully)
+
+**Scenario 8: Non-Overriding Merge**
+- Set initial values in `output.env`
+- Load `.env` files
+- Verify existing values are not overridden (when `overload: false`)
+
+**Scenario 9: Overriding Mode**
+- Load with `overload: true`
+- Verify `.env` values override existing values
+
+**Scenario 10: Multi-Path Loading**
+- Load from multiple directories
+- Verify correct merging behavior
+- Test conflict resolution
+
+#### Test Implementation Structure
+
+```ts
+// test/load-dotenv.test.ts
+import { test, expect, describe, beforeEach, afterEach } from "bun:test"
+import { loadDotEnvFiles } from "../src/load-dotenv.js"
+import { tmpdir } from "os"
+import { join } from "path"
+
+describe("loadDotEnvFiles", () => {
+  let testDir: string
+
+  beforeEach(async () => {
+    // Create temporary test directory
+    testDir = join(tmpdir(), `dotenv-test-${Date.now()}`)
+    await createTestDirectory(testDir)
+  })
+
+  afterEach(async () => {
+    // Cleanup test directory
+    await removeDirectory(testDir)
+  })
+
+  test("loads .env file", async () => {
+    const result = await loadDotEnvFiles(testDir)
+    expect(result.APP_NAME).toBe("TestApp")
+    expect(result.DATABASE_HOST).toBe("localhost")
+  })
+
+  test("respects flow convention with NODE_ENV=development", async () => {
+    const result = await loadDotEnvFiles(testDir, { nodeEnv: "development" })
+    expect(result.DEBUG).toBe("true")
+    expect(result.APP_NAME).toBe("TestApp (Development)")
+  })
+
+  // ... more tests
+})
+```
+
+#### Helper Functions Needed
+
+- `createTestDirectory(path)` - Sets up mock .env files
+- `removeDirectory(path)` - Cleans up after tests
+- `setTestEnvFiles(path, envFiles)` - Creates custom .env files for tests
+
+---
+
+### Test 2: E2E Test (OpenCode Integration)
+
+#### Purpose
+
+Test the complete plugin workflow within OpenCode, verifying:
+- Plugin loads correctly
+- Environment variables are injected into spawned shells
+- Bash commands can access loaded variables
+- Integration works end-to-end
+
+#### Test Approach
+
+**Option A: OpenCode Plugin API Test (Recommended)**
+- Use OpenCode's test utilities (if available)
+- Simulate plugin loading and hook execution
+- Test the full hook lifecycle without launching OpenCode
+
+**Option B: Integration Test with Mock OpenCode**
+- Create a minimal OpenCode-like environment
+- Mock the `shell.env` hook trigger
+- Verify environment injection
+
+**Option C: Full E2E with OpenCode Binary**
+- Launch OpenCode with test configuration
+- Execute bash commands through the API
+- Verify environment variable access
+
+#### Test Scenarios
+
+**Scenario 1: Basic Variable Loading**
+- Start OpenCode with plugin loaded
+- Execute `echo $APP_NAME`
+- Verify output matches `.env` value
+
+**Scenario 2: Environment-Specific Loading**
+- Set `NODE_ENV=production`
+- Start OpenCode
+- Execute `echo $API_URL`
+- Verify production URL is loaded
+
+**Scenario 3: Encrypted Variables**
+- Load plugin with `.env.keys` present
+- Execute `echo $ENCRYPTED_VAR`
+- Verify decrypted value (not encrypted string)
+
+**Scenario 4: Variable Persistence Across Shells**
+- Execute command in shell
+- Spawn new shell
+- Verify variables still available
+
+**Scenario 5: Interactive Terminal**
+- Launch interactive terminal
+- Manually test variable access
+- Verify tab completion and environment display
+
+**Scenario 6: Concurrent Shell Execution**
+- Spawn multiple shells simultaneously
+- Verify all have correct env vars
+- Test for race conditions
+
+#### Mock Environment Setup
+
+**Test Configuration File:**
+
+```json
+{
+  "name": "dotenv-e2e-test",
+  "plugins": [
+    ".opencode/plugins/load-dotenv.js"
+  ],
+  "env": {
+    "NODE_ENV": "test",
+    "DOTENV_PRIVATE_KEY": "test-private-key-for-testing"
+  }
+}
+```
+
+**Test Environment Variables:**
+
+```env
+# Mock API key for testing
+MOCK_API_KEY=test-api-key-12345
+MOCK_DATABASE_URL=postgres://test:test@localhost:5432/testdb
+```
+
+#### E2E Test Structure
+
+```ts
+// test/e2e.test.ts
+import { test, expect, describe } from "bun:test"
+import { $ } from "bun"
+
+describe("E2E: OpenCode Plugin Integration", () => {
+  test("loads environment variables into bash commands", async () => {
+    // Start OpenCode with test config
+    // Execute bash command: echo $APP_NAME
+    const result = await opencode.bash("echo $APP_NAME")
+    expect(result.stdout.trim()).toBe("TestApp")
+  })
+
+  test("respects NODE_ENV for environment selection", async () => {
+    // Set NODE_ENV=production
+    const result = await opencode.bash("echo $API_URL", { 
+      env: { NODE_ENV: "production" }
+    })
+    expect(result.stdout.trim()).toBe("https://api.example.com")
+  })
+
+  test("decrypts encrypted variables", async () => {
+    // Execute command with encrypted var
+    const result = await opencode.bash("echo $API_KEY")
+    // Should show decrypted value, not "encrypted:..."
+    expect(result.stdout).not.toContain("encrypted:")
+    expect(result.stdout.trim()).toBe("decrypted-api-key-value")
+  })
+})
+```
+
+#### Alternative: Script-Based E2E Test
+
+If OpenCode doesn't provide a test API, use a script-based approach:
+
+```ts
+// test/e2e-script.ts
+#!/usr/bin/env bun
+
+/**
+ * E2E test script that launches OpenCode and tests env var loading
+ * Usage: bun test/e2e-script.ts
+ */
+
+import { $ } from "bun"
+
+// Test 1: Basic variable loading
+console.log("Test 1: Basic variable loading...")
+const test1 = await $`opencode exec --config test/fixtures/e2e-config.json -- bash -c 'echo $APP_NAME'`
+if (test1.stdout.trim() === "TestApp") {
+  console.log("✅ Test 1 passed")
+} else {
+  console.log("❌ Test 1 failed")
+  process.exit(1)
+}
+
+// Test 2: Environment-specific loading
+console.log("Test 2: Environment-specific loading...")
+const test2 = await $`opencode exec --env NODE_ENV=production -- bash -c 'echo $API_URL'`
+if (test2.stdout.trim() === "https://api.example.com") {
+  console.log("✅ Test 2 passed")
+} else {
+  console.log("❌ Test 2 failed")
+  process.exit(1)
+}
+
+console.log("All E2E tests passed!")
+```
+
+#### E2E Test Prerequisites
+
+1. **OpenCode Installation** - Must have OpenCode installed and in PATH
+2. **Plugin Configuration** - Test plugin must be in `.opencode/plugins/`
+3. **Test Environment** - Must have access to OpenCode's test utilities or binary
+4. **Cleanup** - Must properly terminate OpenCode process after tests
+
+---
+
+### Test Execution Plan
+
+#### Phase 1: Core Function Extraction (Prerequisite)
+
+1. Extract `loadDotEnvFiles()` function from plugin
+2. Update shim to call extracted function
+3. Verify existing functionality still works
+4. Add TypeScript types for function signature
+
+#### Phase 2: Unit/Integration Tests
+
+1. Create `test/fixtures/` directory structure
+2. Add test `.env` files (committed to repo)
+3. Implement `loadDotenv.test.ts`
+4. Implement helper functions (create/cleanup)
+5. Add tests for all 10+ scenarios
+6. Run tests: `bun test`
+
+#### Phase 3: E2E Tests
+
+1. Create test configuration files
+2. Implement `test/e2e.test.ts` or `test/e2e-script.ts`
+3. Add mock environment variables
+4. Implement test scenarios
+5. Run E2E tests
+6. Document any limitations
+
+#### Phase 4: Continuous Integration
+
+1. Add test scripts to `package.json`:
+   ```json
+   {
+     "scripts": {
+       "test": "bun test",
+       "test:unit": "bun test test/load-dotenv.test.ts",
+       "test:e2e": "bun test test/e2e.test.ts",
+       "test:all": "bun run test:unit && bun run test:e2e"
+     }
+   }
+   ```
+
+2. Configure GitHub Actions to run tests on:
+   - Pull requests
+   - Main branch pushes
+   - Tag releases
+
+3. Add test coverage reporting (optional)
+
+---
+
+### Testing Dependencies
+
+**For Unit Tests:**
+- Bun's built-in test runner (already used)
+- No additional dependencies needed
+
+**For E2E Tests:**
+- OpenCode CLI (must be installed)
+- Test fixtures (committed to repo)
+- Optional: OpenCode test utilities (if available)
+
+---
+
+### Test Coverage Goals
+
+- **Core Loading Logic**: 100% coverage of `loadDotEnvFiles()`
+- **Flow Convention**: All environment types tested
+- **Error Handling**: Edge cases and error paths
+- **Encryption**: Encryption/decryption paths
+- **Integration**: Critical E2E workflows
+
+---
+
+### Limitations and Considerations
+
+**Unit Test Limitations:**
+- Cannot test actual OpenCode plugin loading
+- Cannot test real shell spawning
+- Mocked environment may differ from production
+
+**E2E Test Limitations:**
+- Slower execution
+- Requires OpenCode installation
+- May be flaky due to external dependencies
+- Harder to debug failures
+
+**Mitigation Strategies:**
+- Prioritize unit tests for rapid feedback
+- Use E2E tests for critical paths only
+- Provide clear error messages in E2E tests
+- Keep test fixtures simple and deterministic
+
+---
+
 ## CI/CD Integration
 
 ### GitHub Actions Example
