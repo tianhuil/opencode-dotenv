@@ -16,11 +16,21 @@ _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
-.env
+# .env - Uncomment if you commit default values (safe if no secrets)
+# .env.development - Uncomment if you commit development defaults (safe if no secrets)
+# .env.test - Uncomment if you commit test defaults (safe if no secrets)
+# .env.production - Uncomment if you commit production defaults (safe if no secrets)
+
+# Environment keys (private decryption keys)
+.env.keys
+.env.*.keys
+
+# Local environment overrides (machine-specific)
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+.env.*.local
 
 # caches
 .eslintcache
