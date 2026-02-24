@@ -200,6 +200,33 @@ The shim in `.opencode/plugins/load-dotenv.ts` automatically reloads changes.
 - Ensure `.env.keys` exists or `DOTENV_PRIVATE_KEY` is set
 - Check public/private key pair match
 
+## Publishing
+
+### Publish to npm with np
+
+```bash
+# 1. Install dependencies
+bun install
+
+# 2. Login to npm
+npm login
+
+# 3. Publish using np (automatically prompts for version bump)
+bunx np --any-branch
+```
+
+### Manual publish
+
+If you prefer manual version control:
+
+```bash
+# Bump version (patch, minor, or major)
+npm version patch
+
+# Publish to npm
+npm publish --access public
+```
+
 ## References
 
 - [OpenCode Plugins Documentation](https://opencode.ai/docs/plugins/)
