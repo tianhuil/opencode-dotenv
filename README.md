@@ -1,6 +1,6 @@
 # OpenCode DotEnv Plugin
 
-![CI](https://github.com/anomalyco/opencode-dotenv/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml/badge.svg)
 
 An OpenCode plugin that automatically loads `.env` files into shell environments before every bash command execution.
 
@@ -14,7 +14,22 @@ An OpenCode plugin that automatically loads `.env` files into shell environments
 
 ## Installation
 
-### Option 1: Project-level Plugin (Recommended for this project)
+### Install from npm (Recommended)
+
+Add to your `opencode.json` config:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["@tianhuil/opencode-dotenv"]
+}
+```
+
+OpenCode automatically installs npm plugins using Bun at startup. Packages are cached in `~/.cache/opencode/node_modules/`.
+
+---
+
+### Option 1: Project-level Plugin (Development)
 
 The plugin files are already in place. OpenCode will automatically load it:
 
@@ -25,7 +40,7 @@ The plugin files are already in place. OpenCode will automatically load it:
 
 Restart OpenCode to pick up the plugin.
 
-### Option 2: Global Plugin
+### Option 2: Global Plugin (Development)
 
 To use this plugin across all projects:
 
@@ -37,17 +52,6 @@ cp .opencode/plugins/load-dotenv.ts ~/.config/opencode/plugins/
 # Copy dependencies package.json
 mkdir -p ~/.config/opencode
 cp .opencode/package.json ~/.config/opencode/package.json
-```
-
-### Option 3: From npm
-
-Add to your `opencode.json` config:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["opencode-dotenv"]
-}
 ```
 
 ## Usage
