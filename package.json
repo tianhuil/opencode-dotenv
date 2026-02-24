@@ -1,8 +1,15 @@
 {
-  "name": "opencode-dotenv",
-  "module": "index.ts",
+  "name": "@tianhuil/opencode-dotenv",
+  "version": "0.1.0",
+  "description": "An OpenCode plugin that automatically loads .env files into shell environments",
+  "main": "./index.ts",
   "type": "module",
-  "private": true,
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    }
+  },
   "scripts": {
     "test": "bun test",
     "test:unit": "bun test test/load-dotenv.test.ts",
@@ -12,9 +19,27 @@
     "@dotenvx/dotenvx": "^1.52.0"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "np": "^11.0.2"
   },
   "peerDependencies": {
     "typescript": "^5"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tianhuil/opencode-dotenv.git"
+  },
+  "homepage": "https://github.com/tianhuil/opencode-dotenv#readme",
+  "keywords": [
+    "opencode",
+    "dotenv",
+    "env",
+    "environment",
+    "plugin"
+  ],
+  "author": "tianhuil",
+  "license": "MIT"
 }

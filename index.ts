@@ -1,1 +1,2 @@
-console.log("Hello via Bun!");
+export { LoadDotEnv } from "./src/load-dotenv"
+export type { LoadDotEnvOptions } from "./src/load-dotenv"

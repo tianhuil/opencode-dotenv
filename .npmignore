@@ -1,0 +1,46 @@
+# Testing
+test/
+coverage/
+
+# OpenCode plugin (local use)
+.opencode/
+.opencode.json
+
+# Development notes
+notes/
+AGENTS.md
+
+# Serena
+.serena/
+
+# GitHub CI
+.github/
+
+# Build/cache
+node_modules/
+dist/
+out/
+*.tsbuildinfo
+.cache/
+.eslintcache
+
+# Logs
+logs/
+*.log
+
+# Environment files (should not be in package)
+.env
+.env.*
+.env.keys
+.env.*.keys
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# npm
+bun.lock
