@@ -1,6 +1,6 @@
 {
   "name": "@tianhuil/opencode-dotenv",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An OpenCode plugin that automatically loads .env files into shell environments",
   "main": "./src/load-dotenv.ts",
   "type": "module",
