@@ -2,12 +2,12 @@
   "name": "@tianhuil/opencode-dotenv",
   "version": "0.1.0",
   "description": "An OpenCode plugin that automatically loads .env files into shell environments",
-  "main": "./index.ts",
+  "main": "./src/load-dotenv.ts",
   "type": "module",
   "exports": {
     ".": {
-      "types": "./index.ts",
-      "import": "./index.ts"
+      "types": "./src/load-dotenv.ts",
+      "import": "./src/load-dotenv.ts"
     }
   },
   "scripts": {
