@@ -1,5 +1,7 @@
 # OpenCode DotEnv Plugin
 
+![CI](https://github.com/anomalyco/opencode-dotenv/actions/workflows/ci.yml/badge.svg)
+
 An OpenCode plugin that automatically loads `.env` files into shell environments before every bash command execution.
 
 ## Features
