@@ -1,6 +1,6 @@
 # OpenCode DotEnv Plugin
 
-![CI](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml)
 
 Opencode only loads `.env` for bash invocations.  This extends that behavior dramatically:
 
