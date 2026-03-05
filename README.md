@@ -12,11 +12,11 @@ An OpenCode plugin that automatically loads `.env` files into shell environments
 - **Variable expansion** - Reference other variables: `DATABASE_URL=postgres://${USER}@localhost`
 - **Safe merging** - Doesn't override existing environment variables
 
-## Installation
+---
 
-### Install from npm (Recommended)
+## Installing
 
-Add to your `opencode.json` config:
+Add the plugin to your `opencode.json` config:
 
 ```json
 {
@@ -25,36 +25,9 @@ Add to your `opencode.json` config:
 }
 ```
 
-OpenCode automatically installs npm plugins using Bun at startup. Packages are cached in `~/.cache/opencode/node_modules/`.
+OpenCode automatically installs npm plugins using Bun at startup. Packages are cached in `~/.cache/opencode/node_modules/`. No manual install step is needed.
 
----
-
-### Option 1: Project-level Plugin (Development)
-
-The plugin files are already in place. OpenCode will automatically load it:
-
-```bash
-# Plugin is located at:
-.opencode/plugins/load-dotenv.ts
-```
-
-Restart OpenCode to pick up the plugin.
-
-### Option 2: Global Plugin (Development)
-
-To use this plugin across all projects:
-
-```bash
-# Copy plugin to global plugins directory
-mkdir -p ~/.config/opencode/plugins
-cp .opencode/plugins/load-dotenv.ts ~/.config/opencode/plugins/
-
-# Copy dependencies package.json
-mkdir -p ~/.config/opencode
-cp .opencode/package.json ~/.config/opencode/package.json
-```
-
-## Usage
+### Usage
 
 Create `.env` files in your project root:
 
@@ -72,7 +45,7 @@ echo "LOG_LEVEL=warn" > .env.production
 echo "API_URL=https://api.example.com" >> .env.production
 ```
 
-The plugin automatically loads environment variables based on `NODE_ENV`:
+The plugin reads the `NODE_ENV` environment variable to determine which files to load (defaults to `development` if not set):
 
 | NODE_ENV | Files loaded (in priority order) |
 |-----------|-------------------------------|
@@ -81,9 +54,9 @@ The plugin automatically loads environment variables based on `NODE_ENV`:
 | `test` | `.env.test.local`, `.env.test`, `.env.local`, `.env` |
 | not set | Defaults to `development` |
 
-## Encryption
+### Encryption
 
-Encrypt secrets in your `.env` files:
+Dotenvx can encrypt secrets directly in your `.env` files, so encrypted values are safe to commit and only decrypted at runtime with a private key:
 
 ```bash
 # Install dotenvx CLI
@@ -133,28 +106,43 @@ When `NODE_ENV=development`:
 .env.*.local
 ```
 
-## Testing
+### Troubleshooting
 
-### Run Unit Tests
+**Environment variables not loading:**
+- Check `.env` files exist in project root
+- Verify the plugin is listed in your `opencode.json`
+
+**Wrong environment loaded:**
+- Check `NODE_ENV`: `echo $NODE_ENV`
+- Verify file names: `.env.production` not `.env.prod`
+
+**Encrypted values not decrypting:**
+- Ensure `.env.keys` exists or `DOTENV_PRIVATE_KEY` is set
+- Check public/private key pair match
+
+---
+
+## Developing
+
+This section is for contributors working on the plugin itself. After cloning the repo, you can load the plugin locally instead of installing from npm.
+
+### Project-level Plugin
+
+After cloning, the plugin files are already in place. OpenCode will automatically load from `.opencode/plugins/load-dotenv.ts`. Restart OpenCode to pick up the plugin.
+
+### Global Plugin
+
+To use your local copy across all projects:
 
 ```bash
-bun test test/load-dotenv.test.ts
+# Copy plugin to global plugins directory
+mkdir -p ~/.config/opencode/plugins
+cp .opencode/plugins/load-dotenv.ts ~/.config/opencode/plugins/
+
+# Copy dependencies package.json
+mkdir -p ~/.config/opencode
+cp .opencode/package.json ~/.config/opencode/package.json
 ```
-
-### Run E2E Tests
-
-```bash
-# Requires OpenCode CLI to be installed
-bun test test/e2e-cli.test.ts
-```
-
-### Run All Tests
-
-```bash
-bun test
-```
-
-## Development
 
 ### Project Structure
 
@@ -177,7 +165,7 @@ opencode-dotenv/
     └── opencode-dotenv-plugin.md # Implementation docs
 ```
 
-### Edit Plugin
+### Editing the Plugin
 
 1. Edit `src/load-dotenv.ts`
 2. Run tests: `bun test`
@@ -185,24 +173,41 @@ opencode-dotenv/
 
 The shim in `.opencode/plugins/load-dotenv.ts` automatically reloads changes.
 
-## Troubleshooting
+### Testing
 
-**Environment variables not loading:**
+#### Run Unit Tests
+
+```bash
+bun test test/load-dotenv.test.ts
+```
+
+#### Run E2E Tests
+
+```bash
+# Requires OpenCode CLI to be installed
+bun test test/e2e-cli.test.ts
+```
+
+#### Run All Tests
+
+```bash
+bun test
+```
+
+### Troubleshooting (Development)
+
+**Environment variables not loading (local plugin):**
 - Check `.env` files exist in project root
 - Verify plugin is in `.opencode/plugins/`
 - Run `bun install` in `.opencode/` to install dependencies
 
-**Wrong environment loaded:**
-- Check `NODE_ENV`: `echo $NODE_ENV`
-- Verify file names: `.env.production` not `.env.prod`
-
-**Encrypted values not decrypting:**
-- Ensure `.env.keys` exists or `DOTENV_PRIVATE_KEY` is set
-- Check public/private key pair match
+---
 
 ## Publishing
 
-### Publish to npm with np
+This section is for maintainers publishing new versions to npm.
+
+### Publish with np
 
 ```bash
 # 1. Install dependencies
@@ -226,6 +231,8 @@ npm version patch
 # Publish to npm
 npm publish --access public
 ```
+
+---
 
 ## References
 
