@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml)
 
-Opencode only loads `.env` for bash invocations.  This extends that behavior dramatically:
+This is the missing dotenv bridge for AI-powered coding:
 
 - **Automatic environment injection** - Loads `.env` files before AI-triggered bash commands and interactive terminals
 - **Multi-environment support** - Follows [dotenv-flow convention](https://dotenvx.com/docs/advanced/config-convention#flow-convention) for `.env.development`, `.env.production.local`, etc.
@@ -10,9 +10,12 @@ Opencode only loads `.env` for bash invocations.  This extends that behavior dra
 - **Variable expansion** - Reference other variables: `DATABASE_URL=postgres://${USER}@localhost`
 - **Safe merging** - Doesn't override existing environment variables
 
-Loading env variables automatically into bash prevents opencode from "peaking" at your secrets files when it runs a script that is missing an environment variable.
+## Your secrets, loaded. Not leaked.
+Opencode only loads `.env` for bash invocations.
 
----
+But if you use anything more than a single `.env` file, your scripts will likely raise an `new Error("Cannot find API_KEY")`.  Your helpful AI agents will eagerly peak at your secrets files to debug the code.
+
+Loading env variables automatically in bash scripts keeps those errors away and your AI agents from the temptation to peak.
 
 ## Installing
 
