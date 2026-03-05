@@ -2,15 +2,15 @@
 
 ![CI](https://github.com/tianhuil/opencode-dotenv/actions/workflows/ci.yml/badge.svg)
 
-An OpenCode plugin that automatically loads `.env` files into shell environments before every bash command execution.
-
-## Features
+Opencode only loads `.env` for bash invocations.  This extends that behavior dramatically:
 
 - **Automatic environment injection** - Loads `.env` files before AI-triggered bash commands and interactive terminals
-- **Multi-environment support** - Follows [dotenv-flow convention](https://dotenvx.com/docs/advanced/config-convention#flow-convention) for `.env.development`, `.env.production`, etc.
+- **Multi-environment support** - Follows [dotenv-flow convention](https://dotenvx.com/docs/advanced/config-convention#flow-convention) for `.env.development`, `.env.production.local`, etc.
 - **Encrypted secrets** - Supports encrypted values using [dotenvx](https://dotenvx.com/)
 - **Variable expansion** - Reference other variables: `DATABASE_URL=postgres://${USER}@localhost`
 - **Safe merging** - Doesn't override existing environment variables
+
+Loading env variables automatically into bash prevents opencode from "peaking" at your secrets files when it runs a script that is missing an environment variable.
 
 ---
 
